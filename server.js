@@ -45,9 +45,9 @@ app.get("/fetch", async (req, res) => {
     // browserLimit returns both content and the final resolved URL
     const { content: html, finalUrl } = await browserLimit(async () => {
       const browser = await puppeteer.launch({
-        headless: "new",
-        args: ["--no-sandbox", "--disable-setuid-sandbox"],
-      });
+  executablePath: '/opt/render/.cache/puppeteer/chrome/linux-<version>/chrome-linux64/chrome',
+  args: ['--no-sandbox', '--disable-setuid-sandbox'],
+});
       let page;
       try {
         page = await browser.newPage();
@@ -188,3 +188,4 @@ app.get("/fetch", async (req, res) => {
 app.listen(PORT, () => {
   console.log(`Pseudo-browser server listening on http://localhost:${PORT}`);
 });
+
