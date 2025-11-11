@@ -1,7 +1,6 @@
 // server.js
 const express = require("express");
-const puppeteer = require("puppeteer-core");
-const chromium = require("@sparticuz/chromium");
+const puppeteer = require("puppeteer");
 const cheerio = require("cheerio");
 const rateLimit = require("express-rate-limit");
 const pLimit = require("p-limit").default;
@@ -12,16 +11,16 @@ const fetch = require("node-fetch");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// 同時実行制限
+// concurrency limit for headless sessions
 const browserLimit = pLimit(3);
 
-// レート制限
+// simple rate limit
 app.use(rateLimit({ windowMs: 60 * 1000, max: 60 }));
 
-// public フォルダ配信
+// serve static files
 app.use(express.static(path.join(__dirname, "public")));
 
-// SSRF防止
+// SSRF protection
 function isBlockedUrl(u) {
   try {
     const parsed = new URL(u);
@@ -36,48 +35,48 @@ function isBlockedUrl(u) {
   }
 }
 
-// Puppeteerブラウザインスタンスをキャッシュ（Renderでは再利用したほうが高速）
-let browser;
-async function getBrowser() {
-  if (browser) return browser;
-  const executablePath = await chromium.executablePath();
-  browser = await puppeteer.launch({
-    args: chromium.args,
-    defaultViewport: chromium.defaultViewport,
-    executablePath,
-    headless: chromium.headless,
-  });
-  console.log("✅ Puppeteer browser launched");
-  return browser;
-}
-
-// /fetchエンドポイント
+// --- /fetch?url=SHORT_OR_FULL_URL ---
 app.get("/fetch", async (req, res) => {
   const target = req.query.url;
   if (!target) return res.status(400).send("url required");
   if (isBlockedUrl(target)) return res.status(403).send("forbidden");
 
   try {
+    // browserLimit returns both content and the final resolved URL
     const { content: html, finalUrl } = await browserLimit(async () => {
-      const browser = await getBrowser();
-      const page = await browser.newPage();
+      const browser = await puppeteer.launch({
+        headless: "new",
+        args: ["--no-sandbox", "--disable-setuid-sandbox"],
+      });
+      let page;
       try {
+        page = await browser.newPage();
         await page.setViewport({ width: 1280, height: 800 });
         await page.goto(target, { waitUntil: "networkidle2", timeout: 30000 });
+
+        // get final resolved URL after redirects
         const finalResolved = page.url();
-        if (isBlockedUrl(finalResolved)) throw new Error("resolved url is forbidden");
+
+        // Additional SSRF protection: if the final resolved URL points to blocked host, abort.
+        if (isBlockedUrl(finalResolved)) {
+          throw new Error("resolved url is forbidden");
+        }
+
         const content = await page.content();
-        await page.close();
         return { content, finalUrl: finalResolved };
-      } catch (err) {
-        await page.close();
-        throw err;
+      } finally {
+        try {
+          if (browser) await browser.close();
+        } catch (err) {
+          // ignore close errors
+        }
       }
     });
 
     const $ = cheerio.load(html, { decodeEntities: false });
 
-    // URL絶対化
+    // rewrite resource URLs using finalUrl as the base so relative links are resolved
+    // against the actual loaded page (after redirects), not the original query param.
     const attrs = [
       { sel: "img", attr: "src" },
       { sel: "link", attr: "href" },
@@ -97,19 +96,24 @@ app.get("/fetch", async (req, res) => {
       });
     });
 
-    // <a>タグの変換
+    // replace <a> for client interception
+    // Use finalUrl as base so data-original-url is the real absolute link
     $("a").each((_, el) => {
       const href = $(el).attr("href");
       if (!href || href === "#" || href.startsWith("javascript:")) return;
       try {
         const abs = new URL(href, finalUrl).toString();
-        const proxyHref = `${req.protocol}://${req.get("host")}/fetch?url=${encodeURIComponent(abs)}`;
+        // build an absolute URL pointing to our proxy /fetch route so
+        // clicks (and middle-click/new-tab) will go through the proxy
+        const proxyHref = `${req.protocol}://${req.get("host")}/fetch?url=${encodeURIComponent(
+          abs
+        )}`;
         $(el).attr("data-original-url", abs);
         $(el).attr("href", proxyHref);
       } catch {}
     });
 
-    // 追跡スクリプト除去
+    // remove trackers
     $("script").each((_, el) => {
       const src = $(el).attr("src") || "";
       const inner = $(el).html() || "";
@@ -122,10 +126,14 @@ app.get("/fetch", async (req, res) => {
       }
     });
 
-    // クリックイベント注入
+    // --- Inject click interceptor ---
     const INJECTED_SCRIPT = `
       <script>
       (function(){
+        // Only intercept clicks when inside an iframe and notify the parent.
+        // For top-level browsing contexts we rely on the anchor href which
+        // we already rewrote to point to the proxy. This avoids breaking
+        // navigation when postMessage handling is absent.
         document.addEventListener('click', function(e){
           try {
             const a = e.target.closest && e.target.closest('a');
@@ -133,16 +141,29 @@ app.get("/fetch", async (req, res) => {
             const originalUrl = a.getAttribute('data-original-url');
             if (!originalUrl) return;
             if (window.parent && window.parent !== window) {
+              // inside an iframe: notify parent and prevent default navigation
               e.preventDefault();
               e.stopPropagation();
               a.style.opacity = '0.6';
               window.parent.postMessage({ type: 'proxy-navigate', url: originalUrl }, '*');
+              // If the parent does not handle the message, attempt a safe
+              // fallback after a short delay to navigate the top window to
+              // the proxy URL (which is set as the anchor href). This should
+              // trigger top-level navigation in most browsers.
               setTimeout(function(){
-                try { window.top.location.href = a.href; } catch {}
+                try {
+                  // a.href was rewritten on the server to point to our proxy
+                  window.top.location.href = a.href;
+                } catch (err) {
+                  // ignore; cross-origin assignment may throw in some contexts
+                }
               }, 250);
             }
+            // otherwise do nothing and let the browser follow the href which
+            // points to our proxy /fetch route as a fallback.
           } catch (err) {
-            console && console.warn && console.warn('[proxy click error]', err);
+            // swallow errors to avoid breaking page scripts
+            console && console.warn && console.warn('[proxy] click handler error', err);
           }
         }, true);
       })();
@@ -150,7 +171,7 @@ app.get("/fetch", async (req, res) => {
     `;
     $("body").append(INJECTED_SCRIPT);
 
-    // baseタグ設定
+    // Set base to the final resolved URL (so relative resources resolve correctly on the client)
     $("head").prepend(`<base href="${finalUrl}">`);
 
     res.setHeader("Content-Type", "text/html; charset=utf-8");
@@ -165,5 +186,5 @@ app.get("/fetch", async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`🚀 Pseudo-browser server listening on http://localhost:${PORT}`);
+  console.log(`Pseudo-browser server listening on http://localhost:${PORT}`);
 });
