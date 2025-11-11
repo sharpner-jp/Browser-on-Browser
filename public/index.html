@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SnapBrowser</title>
+  <!-- ファビコン: public/favicon.png を配置してください -->
+  <link rel="icon" type="image/png" href="favicon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@100;200;300&family=Outfit:wght@200;300&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --color-bg: #f6f7f9;
+      --color-surface: rgba(255, 255, 255, 0.86);
+      --color-text: #181a1f;
+      --color-subtle: rgba(24, 26, 31, 0.58);
+      --color-soft: rgba(24, 26, 31, 0.32);
+      --color-accent: #ff8d3a;
+      --color-accent-strong: #ff6b00;
+      --color-line: rgba(24, 26, 31, 0.08);
+      --radius-lg: 30px;
+      --radius-md: 20px;
+      --radius-sm: 14px;
+      --shadow-sm: 0 26px 60px rgba(20, 22, 30, 0.12);
+      --shadow-md: 0 36px 80px rgba(20, 22, 30, 0.18);
+      --transition-fast: 140ms ease;
+      --transition-medium: 260ms ease;
+    }
+
+    *, *::before, *::after {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: 'Noto Sans JP', 'Outfit', 'Inter', 'Helvetica Neue', Arial, sans-serif;
+      font-weight: 200;
+      color: var(--color-text);
+      background:
+        radial-gradient(circle at 18% -10%, rgba(255, 141, 58, 0.18), transparent 46%),
+        radial-gradient(circle at 82% 8%, rgba(255, 141, 58, 0.14), transparent 44%),
+        linear-gradient(160deg, #ffffff 0%, #f4f6fa 48%, #edf1f7 100%);
+      display: flex;
+      flex-direction: column;
+    }
+
+    button,
+    input {
+      font: inherit;
+      color: inherit;
+    }
+
+    button {
+      border: none;
+      cursor: pointer;
+      transition: transform var(--transition-fast), box-shadow var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast);
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.5;
+    }
+
+    .app-shell {
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+      width: 100%;
+    }
+
+    .toggle-trigger {
+      position: fixed;
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 36px;
+      height: 36px;
+      border-radius: 0 0 18px 18px;
+      background: var(--color-surface);
+      backdrop-filter: blur(32px) saturate(130%);
+      border: 1px solid var(--color-line);
+      border-top: none;
+      box-shadow: var(--shadow-sm);
+      display: grid;
+      place-items: center;
+      font-size: 14px;
+      color: var(--color-accent-strong);
+      z-index: 50;
+      pointer-events: auto;
+      opacity: 1;
+      visibility: visible;
+      transition: opacity var(--transition-medium), visibility var(--transition-medium);
+    }
+
+    .toggle-trigger.is-hidden {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transform: translateX(-50%) translateY(-100%);
+    }
+
+    .toggle-trigger::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      border: 1px solid rgba(255, 255, 255, 0.24);
+      border-top: none;
+      mix-blend-mode: soft-light;
+      pointer-events: none;
+    }
+
+    .toggle-trigger:hover:not(:disabled) {
+      transform: translateX(-50%) translateY(2px);
+      box-shadow: 0 18px 30px rgba(255, 141, 58, 0.26);
+      background: rgba(255, 107, 0, 0.12);
+      border-color: rgba(255, 107, 0, 0.24);
+    }
+
+    .chrome-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.2);
+      backdrop-filter: blur(4px);
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity var(--transition-medium), visibility var(--transition-medium);
+      z-index: 39;
+      pointer-events: none;
+    }
+
+    .chrome-overlay.is-visible {
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+    }
+
+    .chrome-container {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      pointer-events: none;
+      display: grid;
+      place-items: center;
+      padding: 18px 24px;
+      z-index: 40;
+    }
+
+    .browser-chrome {
+      width: min(1040px, 100%);
+      background: var(--color-surface);
+      backdrop-filter: blur(32px) saturate(130%);
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--color-line);
+      box-shadow: var(--shadow-sm);
+      transform: translateY(-28px);
+      opacity: 0;
+      visibility: hidden;
+      transition: transform var(--transition-medium), opacity var(--transition-medium), visibility var(--transition-medium);
+      pointer-events: auto;
+    }
+
+    .browser-chrome::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      border: 1px solid rgba(255, 255, 255, 0.24);
+      mix-blend-mode: soft-light;
+      pointer-events: none;
+    }
+
+    .browser-chrome.is-open {
+      transform: translateY(0);
+      opacity: 1;
+      visibility: visible;
+    }
+
+    .chrome-controls {
+      display: flex;
+      gap: 14px;
+      padding: 32px 32px 22px;
+    }
+
+    .control-button {
+      width: 46px;
+      height: 46px;
+      border-radius: 16px;
+      border: 1px solid rgba(24, 26, 31, 0.12);
+      background: rgba(255, 255, 255, 0.72);
+      display: grid;
+      place-items: center;
+      font-size: 18px;
+      font-weight: 200;
+    }
+
+    .control-button:not(:disabled):hover {
+      transform: translateY(-1px);
+      box-shadow: 0 16px 30px rgba(24, 26, 31, 0.12);
+      background: rgba(255, 107, 0, 0.14);
+      border-color: rgba(255, 107, 0, 0.3);
+      color: var(--color-accent-strong);
+    }
+
+    .chrome-search {
+      padding: 0 32px 32px;
+    }
+
+    .search-form {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .search-input {
+      padding: 16px 22px;
+      border-radius: var(--radius-md);
+      border: 1px solid rgba(24, 26, 31, 0.1);
+      background: rgba(255, 255, 255, 0.94);
+      font-size: 17px;
+      font-weight: 200;
+      letter-spacing: 0.01em;
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+      transition: border-color var(--transition-fast), box-shadow var(--transition-fast), backdrop-filter var(--transition-fast);
+    }
+
+    .search-input::placeholder {
+      color: rgba(24, 26, 31, 0.28);
+    }
+
+    .search-input:focus {
+      outline: none;
+      border-color: rgba(255, 107, 0, 0.46);
+      box-shadow: 0 0 0 5px rgba(255, 141, 58, 0.18);
+      backdrop-filter: blur(4px);
+    }
+
+    .search-button {
+      padding: 16px 32px;
+      border-radius: 999px;
+      font-weight: 200;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      background: linear-gradient(150deg, #ffb366, #ff8d3a, #ff6b00);
+      color: white;
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      box-shadow: 0 22px 38px rgba(255, 141, 58, 0.24);
+    }
+
+    .search-button:not(:disabled):hover {
+      transform: translateY(-1px);
+      box-shadow: 0 30px 54px rgba(255, 141, 58, 0.32);
+    }
+
+    .search-button:active:not(:disabled) {
+      transform: translateY(1px);
+    }
+
+    .stage {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .stage.has-content {
+      padding-top: 0;
+    }
+
+    .hero {
+      flex: 1;
+      display: grid;
+      place-items: center;
+      padding: 90px 24px 140px;
+      min-height: 100vh;
+    }
+
+    .hero::before,
+    .hero::after {
+      content: "";
+      position: absolute;
+      width: 520px;
+      height: 520px;
+      border-radius: 50%;
+      filter: blur(120px);
+      opacity: 0.3;
+      pointer-events: none;
+    }
+
+    .hero::before {
+      top: -240px;
+      left: -180px;
+      background: rgba(255, 141, 58, 0.22);
+    }
+
+    .hero::after {
+      right: -200px;
+      bottom: -200px;
+      background: rgba(24, 26, 31, 0.12);
+    }
+
+    .hero-inner {
+      position: relative;
+      max-width: 760px;
+      width: 100%;
+      padding: 96px 72px;
+      display: grid;
+      gap: 38px;
+      text-align: center;
+    }
+
+    .hero-title {
+      font-size: clamp(3.4rem, 8vw, 5.6rem);
+      font-weight: 100;
+      letter-spacing: -0.06em;
+      margin: 0;
+      color: var(--color-text);
+      display: inline-block;
+      line-height: 1;
+    }
+
+    .hero-subtitle {
+      font-size: 1.08rem;
+      color: rgba(24, 26, 31, 0.52);
+      letter-spacing: 0.16em;
+      margin: 0;
+      text-transform: uppercase;
+      font-weight: 200;
+    }
+
+    .iframe-container {
+      flex: 1;
+      display: none;
+      position: relative;
+      background: rgba(246, 247, 249, 0.94);
+      border-top: 1px solid rgba(24, 26, 31, 0.06);
+    }
+
+    .iframe-container.is-visible {
+      display: block;
+    }
+
+    .loading-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(246, 247, 249, 0.98);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+    }
+
+    .loading-overlay.is-visible {
+      display: flex;
+    }
+
+    .loading_box {
+      position: relative;
+    }
+
+    .loading_02 {
+      width: 50px;
+      height: 50px;
+      border: 6px dotted var(--color-accent-strong);
+      border-radius: 50%;
+      display: inline-block;
+      position: relative;
+      animation: rotation 2s linear infinite;
+      margin: 0;
+    }
+
+    @keyframes rotation {
+      0% {
+        transform: rotate(0deg);
+      }
+      100% {
+        transform: rotate(360deg);
+      }
+    }
+
+    .iframe-view {
+      width: 100%;
+      height: 100vh;
+      border: none;
+      background: #fdfdff;
+      box-shadow: inset 0 0 0 1px rgba(24, 26, 31, 0.05);
+    }
+
+    @media (max-width: 768px) {
+      .chrome-controls,
+      .chrome-search {
+        padding-left: 20px;
+        padding-right: 20px;
+      }
+
+      .chrome-controls {
+        padding-top: 20px;
+      }
+
+      .search-form {
+        grid-template-columns: 1fr;
+      }
+
+      .search-button {
+        width: 100%;
+      }
+
+      .hero-inner {
+        padding: 68px 34px;
+        border-radius: 34px;
+      }
+
+      .hero-title {
+        font-size: clamp(3rem, 10vw, 4.4rem);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <button id="toggleTrigger" type="button" class="toggle-trigger" aria-label="コントロールパネルを開く">▽</button>
+
+    <div class="chrome-overlay" id="chromeOverlay"></div>
+
+    <div class="chrome-container">
+      <div class="browser-chrome" id="browserChrome" aria-hidden="true">
+        <div id="chromeControls" class="chrome-controls" role="group" aria-label="ブラウザ操作">
+          <button type="button" class="control-button" id="backButton" aria-label="戻る">←</button>
+          <button type="button" class="control-button" id="homeButton" aria-label="ホーム">⌂</button>
+          <button type="button" class="control-button" id="reloadButton" aria-label="再読み込み">↻</button>
+        </div>
+        <div class="chrome-search">
+          <form id="chromeForm" class="search-form" autocomplete="off">
+            <input
+              id="chromeInput"
+              class="search-input"
+              type="text"
+              placeholder="https://example.com"
+              aria-label="URLを入力"
+              inputmode="url"
+              spellcheck="false"
+            />
+            <button type="submit" class="search-button" id="chromeGo">Snap!</button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <main class="stage" id="stage">
+      <section class="hero" id="heroSection">
+        <div class="hero-inner">
+          <!-- ヘッダーは削除しました -->
+          <h1 class="hero-title">SnapBrowser</h1>
+          <p class="hero-subtitle">Ultra Light. Ultra Focused. Surf Sharply.</p>
+          <form id="heroForm" class="search-form" autocomplete="off">
+            <input
+              id="heroInput"
+              class="search-input"
+              type="text"
+              placeholder="https://example.com"
+              aria-label="URLを入力"
+              inputmode="url"
+              spellcheck="false"
+            />
+            <button type="submit" class="search-button" id="heroGo">Snap!</button>
+          </form>
+        </div>
+      </section>
+
+      <section class="iframe-container" id="iframeContainer">
+        <div class="loading-overlay" id="loadingOverlay">
+          <div class="loading_box">
+            <p class="loading_02"></p>
+          </div>
+        </div>
+        <iframe
+          id="view"
+          class="iframe-view"
+          sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
+          title="SnapBrowserページビュー"
+        ></iframe>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const API_KEY = "8e31dd604cd0989aaa6ad94aa319b32f";
+
+    const heroForm = document.getElementById("heroForm");
+    const heroInput = document.getElementById("heroInput");
+    const heroGo = document.getElementById("heroGo");
+
+    const chromeForm = document.getElementById("chromeForm");
+    const chromeInput = document.getElementById("chromeInput");
+    const chromeGo = document.getElementById("chromeGo");
+
+    const iframe = document.getElementById("view");
+    const heroSection = document.getElementById("heroSection");
+    const iframeContainer = document.getElementById("iframeContainer");
+    const stage = document.getElementById("stage");
+    const loadingOverlay = document.getElementById("loadingOverlay");
+
+    const backButton = document.getElementById("backButton");
+    const reloadButton = document.getElementById("reloadButton");
+    const homeButton = document.getElementById("homeButton");
+
+    const toggleTrigger = document.getElementById("toggleTrigger");
+    const browserChrome = document.getElementById("browserChrome");
+    const chromeOverlay = document.getElementById("chromeOverlay");
+
+    let isLoading = false;
+    let isChromeOpen = false;
+
+    const historyStack = [];
+    let historyIndex = -1;
+
+    function normalizeUrl(raw) {
+      if (!raw) return "";
+      const trimmed = raw.trim();
+      if (!trimmed) return "";
+      if (/^https?:\/\//i.test(trimmed)) return trimmed;
+      return `https://${trimmed}`;
+    }
+
+    async function shortenUrl(url) {
+      const api = `https://xgd.io/V1/shorten?url=${encodeURIComponent(url)}&key=${API_KEY}`;
+      const res = await fetch(api);
+      if (!res.ok) {
+        throw new Error("URLの短縮に失敗しました");
+      }
+      const data = await res.json();
+      if (data.status !== 200 || !data.shorturl) {
+        throw new Error(data.message || "URLの短縮に失敗しました");
+      }
+      return data.shorturl;
+    }
+
+    async function navigateTo(raw, { pushHistory = true, requestUrl } = {}) {
+      const normalized = normalizeUrl(raw);
+      if (!normalized) {
+        alert("URLを入力してください");
+        return false;
+      }
+      if (isLoading) return false;
+
+      isLoading = true;
+      heroGo.disabled = true;
+      chromeGo.disabled = true;
+      loadingOverlay.classList.add("is-visible");
+
+      try {
+        let finalRequestUrl = requestUrl;
+        if (!finalRequestUrl) {
+          if (/^https:\/\/(x\.gd|xgd\.io)\//i.test(normalized)) {
+            finalRequestUrl = normalized;
+          } else {
+            finalRequestUrl = await shortenUrl(normalized);
+          }
+        }
+
+        iframe.src = `/fetch?url=${encodeURIComponent(finalRequestUrl)}`;
+        heroInput.value = normalized;
+        chromeInput.value = normalized;
+
+        // hide home and show iframe
+        heroSection.style.display = "none";
+        iframeContainer.classList.add("is-visible");
+        stage.classList.add("has-content");
+
+        if (pushHistory) {
+          if (historyIndex < historyStack.length - 1) {
+            historyStack.splice(historyIndex + 1);
+          }
+          historyStack.push({ finalUrl: normalized, requestUrl: finalRequestUrl });
+          historyIndex = historyStack.length - 1;
+        }
+
+        updateControlsState();
+        return true;
+      } catch (err) {
+        alert(`エラー: ${err.message}`);
+        loadingOverlay.classList.remove("is-visible");
+        return false;
+      } finally {
+        isLoading = false;
+        heroGo.disabled = false;
+        chromeGo.disabled = false;
+      }
+    }
+
+    function updateControlsState() {
+      backButton.disabled = historyIndex <= 0;
+      reloadButton.disabled = historyIndex < 0;
+    }
+
+    async function goBack() {
+      if (historyIndex <= 0) return;
+      const target = historyStack[historyIndex - 1];
+      const success = await navigateTo(target.finalUrl, {
+        pushHistory: false,
+        requestUrl: target.requestUrl,
+      });
+      if (success) {
+        historyIndex -= 1;
+        updateControlsState();
+      }
+    }
+
+    async function reload() {
+      const current = historyStack[historyIndex];
+      if (!current) return;
+      await navigateTo(current.finalUrl, {
+        pushHistory: false,
+        requestUrl: current.requestUrl,
+      });
+    }
+
+    function toggleChrome(open) {
+      isChromeOpen = open;
+      browserChrome.classList.toggle("is-open", open);
+      chromeOverlay.classList.toggle("is-visible", open);
+      toggleTrigger.classList.toggle("is-hidden", open);
+      browserChrome.setAttribute("aria-hidden", String(!open));
+      toggleTrigger.setAttribute("aria-expanded", String(open));
+      if (open) {
+        chromeInput.focus({ preventScroll: true });
+      }
+    }
+
+    // ホームに戻る（hero を表示し iframe を閉じる）
+    function goHome() {
+      // show hero
+      heroSection.style.display = "";
+      // hide iframe
+      iframeContainer.classList.remove("is-visible");
+      stage.classList.remove("has-content");
+      loadingOverlay.classList.remove("is-visible");
+      // unload iframe to stop any running content
+      try { iframe.src = "about:blank"; } catch (e) {}
+      updateControlsState();
+    }
+
+    heroForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      void navigateTo(heroInput.value, { pushHistory: true });
+    });
+
+    chromeForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      void navigateTo(chromeInput.value, { pushHistory: true });
+    });
+
+    backButton.addEventListener("click", () => {
+      void goBack();
+    });
+
+    reloadButton.addEventListener("click", () => {
+      void reload();
+    });
+
+    homeButton.addEventListener("click", () => {
+      goHome();
+    });
+
+    toggleTrigger.addEventListener("click", () => {
+      toggleChrome(!isChromeOpen);
+    });
+
+    chromeOverlay.addEventListener("click", () => {
+      toggleChrome(false);
+    });
+
+    window.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && isChromeOpen) {
+        toggleChrome(false);
+      }
+    });
+
+    window.addEventListener("message", (event) => {
+      if (event.data?.type === "proxy-navigate" && typeof event.data.url === "string") {
+        void navigateTo(event.data.url, { pushHistory: true });
+      }
+    });
+
+    iframe.addEventListener("load", () => {
+      loadingOverlay.classList.remove("is-visible");
+    });
+
+    // 初期状態のコントロール
+    updateControlsState();
+  </script>
+</body>
+</html>
