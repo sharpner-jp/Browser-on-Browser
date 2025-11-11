@@ -11,13 +11,12 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-  "express": "^4.19.2",
-  "cheerio": "^1.0.0",
-  "puppeteer-core": "^22.10.0",
-  "@sparticuz/chromium": "^120.0.0",
-  "express-rate-limit": "^6.9.0",
-  "p-limit": "^4.0.0",
-  "node-fetch": "^3.3.2"
-}
-
+    "cheerio": "^1.1.2",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.2.1",
+    "mime-types": "^3.0.1",
+    "node-fetch": "^2.7.0",
+    "p-limit": "^7.2.0",
+    "puppeteer": "^24.29.1"
+  }
 }
