@@ -1,8 +1,11 @@
 {
-  "name": "a",
+  "name": "snapbrowser",
   "version": "1.0.0",
-  "description": "",
+  "description": "Lightweight web browser proxy",
   "main": "server.js",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js"
@@ -11,13 +14,11 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@sparticuz/chromium": "^131.0.2",
+    "@sparticuz/chromium": "^130.0.0",
     "cheerio": "^1.1.2",
     "express": "^5.1.0",
     "express-rate-limit": "^8.2.1",
-    "mime-types": "^3.0.1",
-    "node-fetch": "^2.7.0",
     "p-limit": "^7.2.0",
-    "puppeteer-core": "^23.11.1"
+    "puppeteer-core": "^23.5.0"
   }
 }
