@@ -1,6 +1,7 @@
 // server.js
 const express = require("express");
-const puppeteer = require("puppeteer");
+const puppeteer = require("puppeteer-core");
+const chromium = require("@sparticuz/chromium");
 const cheerio = require("cheerio");
 const rateLimit = require("express-rate-limit");
 const pLimit = require("p-limit").default;
@@ -36,18 +37,10 @@ app.get("/fetch", async (req, res) => {
   try {
     const { content: html, finalUrl } = await browserLimit(async () => {
       const browser = await puppeteer.launch({
-        headless: true,
-        args: [
-          "--no-sandbox",
-          "--disable-setuid-sandbox",
-          "--disable-dev-shm-usage",
-          "--disable-accelerated-2d-canvas",
-          "--no-first-run",
-          "--no-zygote",
-          "--disable-gpu",
-          "--disable-software-rasterizer",
-          "--disable-extensions"
-        ],
+        args: chromium.args,
+        defaultViewport: chromium.defaultViewport,
+        executablePath: await chromium.executablePath(),
+        headless: chromium.headless,
       });
       let page;
       try {
