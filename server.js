@@ -37,10 +37,15 @@ app.get("/fetch", async (req, res) => {
   try {
     const { content: html, finalUrl } = await browserLimit(async () => {
       const browser = await puppeteer.launch({
-        args: chromium.args,
+        args: [
+          ...chromium.args,
+          '--disable-web-security',
+          '--disable-features=IsolateOrigins,site-per-process'
+        ],
         defaultViewport: chromium.defaultViewport,
         executablePath: await chromium.executablePath(),
         headless: chromium.headless,
+        ignoreHTTPSErrors: true,
       });
       let page;
       try {
@@ -49,7 +54,12 @@ app.get("/fetch", async (req, res) => {
 
         console.log("[/fetch] navigating to:", target);
         try {
-          await page.goto(target, { waitUntil: "networkidle2", timeout: 30000 });
+          await page.goto(target, { 
+            waitUntil: "domcontentloaded", 
+            timeout: 60000 
+          });
+          // 追加で少し待機してコンテンツを確実に読み込む
+          await page.waitForTimeout(2000);
         } catch (err) {
           console.error("[/fetch] page.goto error:", err && err.message);
           throw new Error("page.goto failed: " + (err && err.message));
