@@ -9,7 +9,7 @@ const { URL } = require("url");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const browserLimit = pLimit(3);
+const browserLimit = pLimit(1); // Freeプラン用に1に削減
 
 app.use(rateLimit({ windowMs: 60 * 1000, max: 60 }));
 app.use(express.static(path.join(__dirname, "public")));
@@ -36,7 +36,7 @@ app.get("/fetch", async (req, res) => {
   try {
     const { content: html, finalUrl } = await browserLimit(async () => {
       const browser = await puppeteer.launch({
-        headless: "new",
+        headless: true,
         args: [
           "--no-sandbox",
           "--disable-setuid-sandbox",
@@ -44,10 +44,10 @@ app.get("/fetch", async (req, res) => {
           "--disable-accelerated-2d-canvas",
           "--no-first-run",
           "--no-zygote",
-          "--single-process",
-          "--disable-gpu"
+          "--disable-gpu",
+          "--disable-software-rasterizer",
+          "--disable-extensions"
         ],
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || puppeteer.executablePath(),
       });
       let page;
       try {
